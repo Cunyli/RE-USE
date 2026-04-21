@@ -1,40 +1,49 @@
 # RE-USE on Triton
 
-This directory contains a no-Docker reproduction path for running
+This repository is the lightweight launcher for reproducing
 [`nvidia/RE-USE`](https://huggingface.co/nvidia/RE-USE) on Triton A100 nodes.
 
-## Why this route
+It keeps only the scripts you want to sync through Git. Upstream code,
+downloaded model files, logs, and audio data stay in ignored local folders.
 
-Triton A100 nodes are x86_64, but Docker adds extra friction on a cluster.
-The simpler path is:
+## Layout
 
-1. create a clean Python environment
-2. install PyTorch 2.2.2
-3. install the official local `mamba_install` from SEMamba
-4. download the RE-USE Hugging Face repo
-5. run inference in a Slurm job
+- `scripts/fetch_sources.sh`: clone SEMamba into `third_party/SEMamba`
+- `scripts/bootstrap_env.sh`: create the environment, install dependencies,
+  and download the RE-USE Hugging Face snapshot into `upstream/RE-USE`
+- `scripts/run_interactive.sh`: run inference in an interactive GPU job
+- `scripts/reuse_infer.sbatch`: batch job for Triton
 
-## Files
+Generated local directories:
 
-- `scripts/bootstrap_env.sh`: create the environment and install dependencies
-- `scripts/fetch_sources.sh`: clone SEMamba and download RE-USE
-- `scripts/run_interactive.sh`: quick interactive inference
-- `scripts/reuse_infer.sbatch`: batch job for inference on Triton
+- `third_party/SEMamba/`
+- `upstream/RE-USE/`
+- `data/noisy_audio/`
+- `data/enhanced_audio/`
 
-## Expected workflow on Triton
+## Workflow on Triton
 
 ```bash
-cd /path/to/reuse-triton
+cd ~/Projects/RE-USE
 bash scripts/fetch_sources.sh
 bash scripts/bootstrap_env.sh
 sbatch scripts/reuse_infer.sbatch
 ```
 
+For a quick manual test inside an interactive GPU allocation:
+
+```bash
+sinteractive --partition=gpu-a100-80g --gpus=a100:1 --time=02:00:00 --mem=32G
+cd ~/Projects/RE-USE
+bash scripts/run_interactive.sh
+```
+
 ## Notes
 
-- The RE-USE `inference.py` requires a GPU and exits on CPU.
-- The `--checkpoint_file` argument is still marked required in upstream code,
-  but the script actually pulls weights with `from_pretrained("nvidia/RE-USE")`.
-  This setup passes a dummy value.
-- If building `mamba_install` fails, the bootstrap script retries with the
-  upstream `mamba-1_2_0_post1` fallback suggested by SEMamba.
+- Triton A100 nodes are `x86_64`, so this follows the x86 environment route.
+- Upstream `inference.py` requires a GPU and exits on CPU.
+- Upstream still marks `--checkpoint_file` as required, but the script actually
+  loads weights with `from_pretrained("nvidia/RE-USE")`. These wrappers pass a
+  dummy value.
+- If `third_party/SEMamba/mamba_install` fails to build, the bootstrap step
+  retries the upstream `mamba-1_2_0_post1` fallback mentioned in SEMamba.

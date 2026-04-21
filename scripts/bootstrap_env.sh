@@ -2,6 +2,8 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+SEMAMBA_DIR="${SEMAMBA_DIR:-${ROOT_DIR}/third_party/SEMamba}"
+UPSTREAM_DIR="${UPSTREAM_DIR:-${ROOT_DIR}/upstream/RE-USE}"
 ENV_NAME="${ENV_NAME:-reuse-triton}"
 PYTHON_VERSION="${PYTHON_VERSION:-3.10}"
 TORCH_INDEX_URL="${TORCH_INDEX_URL:-https://download.pytorch.org/whl/cu121}"
@@ -35,8 +37,8 @@ if ! command -v git >/dev/null 2>&1; then
   exit 1
 fi
 
-if [ ! -d "${ROOT_DIR}/SEMamba" ]; then
-  echo "Missing ${ROOT_DIR}/SEMamba. Run scripts/fetch_sources.sh first."
+if [ ! -d "${SEMAMBA_DIR}" ]; then
+  echo "Missing ${SEMAMBA_DIR}. Run scripts/fetch_sources.sh first."
   exit 1
 fi
 
@@ -49,22 +51,22 @@ python -m pip install --upgrade pip
 python -m pip install torch==2.2.2 torchaudio==2.2.2 --index-url "${TORCH_INDEX_URL}"
 python -m pip install packaging librosa soundfile pyyaml argparse tensorboard pesq einops huggingface_hub resampy
 
-pushd "${ROOT_DIR}/SEMamba/mamba_install" >/dev/null
+pushd "${SEMAMBA_DIR}/mamba_install" >/dev/null
 if ! python -m pip install .; then
   popd >/dev/null
   echo "Primary mamba_install failed, retrying upstream fallback."
-  pushd "${ROOT_DIR}/SEMamba/mamba-1_2_0_post1" >/dev/null
+  pushd "${SEMAMBA_DIR}/mamba-1_2_0_post1" >/dev/null
   python -m pip install .
 fi
 popd >/dev/null
 
-if [ ! -d "${ROOT_DIR}/RE-USE" ]; then
+mkdir -p "$(dirname "${UPSTREAM_DIR}")" "${ROOT_DIR}/data/noisy_audio" "${ROOT_DIR}/data/enhanced_audio"
+
+if [ ! -d "${UPSTREAM_DIR}" ]; then
   huggingface-cli download nvidia/RE-USE \
-    --local-dir "${ROOT_DIR}/RE-USE" \
+    --local-dir "${UPSTREAM_DIR}" \
     --local-dir-use-symlinks False
 fi
-
-mkdir -p "${ROOT_DIR}/RE-USE/noisy_audio" "${ROOT_DIR}/RE-USE/enhanced_audio"
 
 python - <<'PY'
 import torch
@@ -75,3 +77,4 @@ print("cuda_available", torch.cuda.is_available())
 PY
 
 echo "Environment '${ENV_NAME}' is ready."
+echo "Upstream RE-USE snapshot: ${UPSTREAM_DIR}"

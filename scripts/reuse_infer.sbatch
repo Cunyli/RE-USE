@@ -9,11 +9,12 @@
 
 set -euo pipefail
 
-ROOT_DIR="${ROOT_DIR:-$HOME/Projects/reuse-triton}"
+ROOT_DIR="${ROOT_DIR:-$HOME/Projects/RE-USE}"
+UPSTREAM_DIR="${UPSTREAM_DIR:-${ROOT_DIR}/upstream/RE-USE}"
 ENV_NAME="${ENV_NAME:-reuse-triton}"
-INPUT_DIR="${INPUT_DIR:-${ROOT_DIR}/RE-USE/noisy_audio}"
-OUTPUT_DIR="${OUTPUT_DIR:-${ROOT_DIR}/RE-USE/enhanced_audio}"
-CONFIG_PATH="${CONFIG_PATH:-${ROOT_DIR}/RE-USE/recipes/USEMamba_30x1_lr_00002_norm_05_vq_065_nfft_320_hop_40_NRIR_012_pha_0005_com_04_early_001.yaml}"
+INPUT_DIR="${INPUT_DIR:-${ROOT_DIR}/data/noisy_audio}"
+OUTPUT_DIR="${OUTPUT_DIR:-${ROOT_DIR}/data/enhanced_audio}"
+CONFIG_PATH="${CONFIG_PATH:-${UPSTREAM_DIR}/recipes/USEMamba_30x1_lr_00002_norm_05_vq_065_nfft_320_hop_40_NRIR_012_pha_0005_com_04_early_001.yaml}"
 
 module load mamba
 
@@ -25,7 +26,14 @@ fi
 eval "$(${ACTIVATE_TOOL} shell.bash hook)"
 ${ACTIVATE_TOOL} activate "${ENV_NAME}"
 
-cd "${ROOT_DIR}/RE-USE"
+if [ ! -d "${UPSTREAM_DIR}" ]; then
+  echo "Missing ${UPSTREAM_DIR}. Run scripts/bootstrap_env.sh first."
+  exit 1
+fi
+
+mkdir -p "${INPUT_DIR}" "${OUTPUT_DIR}"
+
+cd "${UPSTREAM_DIR}"
 
 nvidia-smi
 python - <<'PY'
