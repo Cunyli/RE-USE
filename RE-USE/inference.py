@@ -87,7 +87,7 @@ def inference(args, device):
             audio_g = pad_or_trim_to_match(noisy_wav.detach(), audio_g, pad_value=1e-8)  # Align lengths using epsilon padding
             assert audio_g.shape == noisy_wav.shape, audio_g.shape
 
-            output_file = os.path.join(args.output_folder + fname.replace(args.input_folder,'').split('.')[0]+'.flac') # save to .flac format
+            output_file = os.path.join(args.output_folder + fname.replace(args.input_folder,'').split('.')[0]+'.wav') # save to .flac format
             torchaudio.save(output_file, audio_g.cpu(), noisy_sr)
             
 def main():

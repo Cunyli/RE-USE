@@ -17,7 +17,7 @@ conda activate "$CONDA_ENV_NAME"
 test -d "$UPSTREAM_DIR"
 mkdir -p "$INPUT_DIR" "$OUTPUT_DIR"
 
-if ! find "$INPUT_DIR" -maxdepth 1 -type f | grep -q .; then
+if ! find "$INPUT_DIR" -type f | grep -q .; then
   echo "No input files found in $INPUT_DIR"
   exit 1
 fi
