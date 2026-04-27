@@ -1,0 +1,44 @@
+# Environment Settings
+# These settings specify the hardware and distributed setup for the model training.
+# Adjust `num_gpus` and `dist_config` according to your distributed training environment.
+env_setting:
+  num_gpus: 8  # Number of GPUs. Now we don't support CPU mode. 
+  num_workers: 20 # 0  Number of worker threads for data loading.
+  persistent_workers: True # False  If you have large RAM, turn this to be True
+  prefetch_factor: 8 # null 
+  seed: 1234  # Seed for random number generators to ensure reproducibility.
+  stdout_interval: 5000
+  checkpoint_interval: 5000  # save model to ckpt every N steps
+  validation_interval: 5000 
+  dist_cfg:
+    dist_backend: nccl  # Distributed training backend, 'nccl' for NVIDIA GPUs.
+    dist_url: tcp://localhost:19478  # URL for initializing distributed training.
+    world_size: 1  # Total number of processes in the distributed training.
+  pin_memory: True # If you have large RAM, turn this to be True
+  
+
+# STFT Configuration
+# Configuration for Short-Time Fourier Transform (STFT), crucial for audio processing models.
+stft_cfg:
+  sampling_rate: 8000  # Audio sampling rate in Hz.
+  n_fft: 320  # FFT components for transforming audio signals.
+  hop_size: 40  # Samples between successive frames.
+  win_size: 320  # Window size used in FFT.
+  sfi: True # Sampline Frequency Independent
+
+# Model Configuration
+# Defines the architecture specifics of the model, including layer configurations and feature compression.
+model_cfg:
+  hid_feature: 64  # Channels in dense layers.
+  compress_factor: relu_log1p  # Compression factor applied to extracted features.
+  num_tfmamba: 30  # Number of Time-Frequency Mamba (TFMamba) blocks in the model.
+  d_state: 16  # Dimensionality of the state vector in Mamba blocks.
+  d_conv: 4  # Convolutional layer dimensionality within Mamba blocks.
+  expand: 4  # Expansion factor for the layers within the Mamba blocks.
+  norm_epsilon: 0.00001  # Numerical stability in normalization layers within the Mamba blocks.
+  beta: 2.0  # Hyperparameter for the Learnable Sigmoid function.
+  input_channel: 2 # Magnitude and Phase
+  output_channel: 1  # Single Channel Speech Enhancement
+  inner_mamba_nlayer: 1 # Number of layer of Mamba in Bidirectional Mamba
+  nonlinear: None # last activation function for the mag encoder. 'softplus' or 'relu'
+  mapping: True # Otherwise, this should be masking model

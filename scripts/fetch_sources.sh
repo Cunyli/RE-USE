@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-SEMAMBA_DIR="${SEMAMBA_DIR:-${ROOT_DIR}/third_party/SEMamba}"
+SEMAMBA_DIR="${SEMAMBA_DIR:-${ROOT_DIR}/SEMamba}"
 
 mkdir -p "$(dirname "${SEMAMBA_DIR}")" "${ROOT_DIR}/data/noisy_audio" "${ROOT_DIR}/data/enhanced_audio"
 

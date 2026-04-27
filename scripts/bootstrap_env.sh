@@ -2,8 +2,8 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-SEMAMBA_DIR="${SEMAMBA_DIR:-${ROOT_DIR}/third_party/SEMamba}"
-UPSTREAM_DIR="${UPSTREAM_DIR:-${ROOT_DIR}/upstream/RE-USE}"
+SEMAMBA_DIR="${SEMAMBA_DIR:-${ROOT_DIR}/SEMamba}"
+UPSTREAM_DIR="${UPSTREAM_DIR:-${ROOT_DIR}/RE-USE}"
 ENV_NAME="${ENV_NAME:-reuse-triton}"
 PYTHON_VERSION="${PYTHON_VERSION:-3.10}"
 TORCH_INDEX_URL="${TORCH_INDEX_URL:-https://download.pytorch.org/whl/cu121}"
@@ -49,23 +49,21 @@ ${ACTIVATE_TOOL} activate "${ENV_NAME}"
 
 python -m pip install --upgrade pip
 python -m pip install torch==2.2.2 torchaudio==2.2.2 --index-url "${TORCH_INDEX_URL}"
-python -m pip install packaging librosa soundfile pyyaml argparse tensorboard pesq einops huggingface_hub resampy
+python -m pip install numpy==1.26.4 packaging librosa soundfile pyyaml argparse tensorboard pesq einops huggingface_hub resampy
 
 pushd "${SEMAMBA_DIR}/mamba_install" >/dev/null
-if ! python -m pip install .; then
+if ! python -m pip install --no-build-isolation .; then
   popd >/dev/null
   echo "Primary mamba_install failed, retrying upstream fallback."
   pushd "${SEMAMBA_DIR}/mamba-1_2_0_post1" >/dev/null
-  python -m pip install .
+  python -m pip install --no-build-isolation .
 fi
 popd >/dev/null
 
 mkdir -p "$(dirname "${UPSTREAM_DIR}")" "${ROOT_DIR}/data/noisy_audio" "${ROOT_DIR}/data/enhanced_audio"
 
 if [ ! -d "${UPSTREAM_DIR}" ]; then
-  huggingface-cli download nvidia/RE-USE \
-    --local-dir "${UPSTREAM_DIR}" \
-    --local-dir-use-symlinks False
+  hf download nvidia/RE-USE --local-dir "${UPSTREAM_DIR}"
 fi
 
 python - <<'PY'
