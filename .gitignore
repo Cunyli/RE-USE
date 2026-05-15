@@ -1,5 +1,68 @@
-third_party/
-upstream/
-data/
+# Python caches
+__pycache__/
+**/__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Local environments
+.env
+.env.*
+!.env.example
+.venv/
+venv/
+env/
+*.egg-info/
+
+# Local editor and OS files
+.DS_Store
+.idea/
+.vscode/
+/.local_git_backup/
+
+# Local agent/project notes
+AGENTS.md
+docs/
+
+# Upstream source snapshots and cloned repositories
+/SEMamba/
+/RE-USE/
+/third_party/
+/upstream/
+
+# Runtime artifacts
+/data/
+/logs/
+/outputs/
+/runs/
+/wandb/
+/tmp/
+/checkpoints/
+/exp/
+
+# Model weights and generated checkpoints
+*.ckpt
+*.pt
+*.pth
+*.tar
+*.safetensors
+*.onnx
+
+# Slurm and runtime logs
+*.log
 *.out
+*.err
 slurm-*.out
+
+# Generated arrays and temporary media
+*.npy
+*.npz
+*.h5
+*.hdf5
+*.jsonl
+*.csv.tmp
+*.wav.tmp
+*.flac.tmp
+*.mp3.tmp

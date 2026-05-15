@@ -1,0 +1,63 @@
+# TAU fixed USE_simulation pair training config for RE-USE/SEMamba.
+
+env_setting:
+  num_gpus: 1
+  num_workers: 8
+  seed: 20260513
+  stdout_interval: 10
+  checkpoint_interval: 1000
+  validation_interval: 1000
+  summary_interval: 100
+  dist_cfg:
+    dist_backend: nccl
+    dist_url: tcp://localhost:19477
+    world_size: 1
+
+data_cfg:
+  dataset_type: use_simulation_fixed
+  use_simulation_root: ${USE_SIMULATION_ROOT:-../USE_simulation}
+  train_pair_manifest: ${REUSE_TAU_FIXED_TRAIN_CSV:-/path/to/tau/simulated/phone_room/train/paired.csv}
+  valid_pair_manifest: ${REUSE_TAU_FIXED_VALID_CSV:-/path/to/tau/simulated/phone_room/valid/paired.csv}
+
+wandb_cfg:
+  use_wandb: true
+  project: reuse
+  entity: null
+  mode: online
+  run_name: reuse_tau_fixed
+  tags: ["tau", "use_simulation", "fixed"]
+
+training_cfg:
+  training_epochs: 120
+  batch_size: 4
+  learning_rate: 0.0005
+  adam_b1: 0.8
+  adam_b2: 0.99
+  lr_decay: 0.99
+  segment_size: 32000
+  loss:
+    metric: 0.05
+    magnitude: 0.9
+    phase: 0.3
+    complex: 0.1
+    time: 0.2
+    consistancy: 0.1
+  use_PCS400: False
+
+stft_cfg:
+  sampling_rate: 16000
+  n_fft: 400
+  hop_size: 100
+  win_size: 400
+
+model_cfg:
+  hid_feature: 64
+  compress_factor: 0.3
+  num_tfmamba: 4
+  d_state: 16
+  d_conv: 4
+  expand: 4
+  norm_epsilon: 0.00001
+  beta: 2.0
+  input_channel: 2
+  output_channel: 1
