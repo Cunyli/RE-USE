@@ -1,6 +1,5 @@
 import warnings
 warnings.simplefilter(action='ignore', category=FutureWarning)
-from collections import defaultdict, deque
 import os
 import time
 import argparse
@@ -120,23 +119,6 @@ def create_dataloader(dataset, cfg, train=True):
         pin_memory=True,
         drop_last=True if train else False
     )
-
-
-class WindowAverager:
-    def __init__(self, window):
-        self.window = int(window)
-        self.values = defaultdict(lambda: deque(maxlen=self.window))
-
-    def update(self, metrics):
-        for key, value in metrics.items():
-            self.values[key].append(float(value))
-
-    def averages(self):
-        return {
-            key: sum(values) / len(values)
-            for key, values in self.values.items()
-            if values
-        }
 
 
 def metadata_value(metadata, key, index):
@@ -280,7 +262,6 @@ def train(rank, args, cfg):
             wandb_run = wandb.init(**wandb_init_kwargs)
             wandb.define_metric("steps")
             wandb.define_metric("Training/*", step_metric="steps")
-            wandb.define_metric(f"TrainingAvg{cfg['env_setting'].get('summary_avg_window', 100)}/*", step_metric="steps")
             wandb.define_metric("Validation/*", step_metric="steps")
     else:
         wandb_run = None
@@ -289,7 +270,6 @@ def train(rank, args, cfg):
     discriminator.train()
 
     best_pesq, best_pesq_step = 0.0, 0
-    train_averager = WindowAverager(cfg['env_setting'].get('summary_avg_window', 100))
     for epoch in range(max(0, last_epoch), cfg['training_cfg']['training_epochs']):
         if rank == 0:
             start = time.time()
@@ -385,12 +365,6 @@ def train(rank, args, cfg):
                         "Metric PESQ Valid Count": metric_pesq_valid_count,
                         "Metric PESQ Invalid Count": metric_pesq_invalid_count,
                     }
-                train_averager.update({
-                    name: value
-                    for name, value in train_metrics.items()
-                    if not name.endswith(" Count")
-                })
-
                 # STDOUT logging
                 if steps % cfg['env_setting']['stdout_interval'] == 0:
                     print(
@@ -435,13 +409,9 @@ def train(rank, args, cfg):
                 if steps % cfg['env_setting']['summary_interval'] == 0:
                     for name, value in train_metrics.items():
                         sw.add_scalar(f"Training/{name}", value, steps)
-                    avg_metrics = train_averager.averages()
-                    for name, value in avg_metrics.items():
-                        sw.add_scalar(f"TrainingAvg{train_averager.window}/{name}", value, steps)
                     if wandb_run is not None:
                         log_metrics = {"steps": steps}
                         log_metrics.update({f"Training/{name}": value for name, value in train_metrics.items()})
-                        log_metrics.update({f"TrainingAvg{train_averager.window}/{name}": value for name, value in avg_metrics.items()})
                         wandb.log(log_metrics)
 
                 # If NaN happend in training period, RaiseError

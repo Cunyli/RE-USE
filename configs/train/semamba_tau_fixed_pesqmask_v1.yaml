@@ -10,7 +10,6 @@ env_setting:
   checkpoint_keep: 3
   validation_interval: 200
   summary_interval: 100
-  summary_avg_window: 100
   pesq_invalid_log_limit: 5
   dist_cfg:
     dist_backend: nccl
