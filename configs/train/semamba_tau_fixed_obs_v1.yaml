@@ -27,10 +27,10 @@ wandb_cfg:
   project: reuse
   entity: null
   mode: online
-  run_name: reuse_tau_fixed
+  run_name: reuse_tau_fixed_obs_v1
   run_id: null
   resume: allow
-  tags: ["tau", "use_simulation", "fixed"]
+  tags: ["tau", "use_simulation", "fixed", "obs_v1"]
 
 training_cfg:
   training_epochs: 120

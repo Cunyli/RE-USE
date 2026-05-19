@@ -13,6 +13,9 @@ cp "$ROOT_DIR/overlays/SEMamba/dataloaders/dataloader_use_simulation.py" \
   "$SEMAMBA_DIR/dataloaders/dataloader_use_simulation.py"
 cp "$ROOT_DIR/overlays/SEMamba/train.py" \
   "$SEMAMBA_DIR/train.py"
+mkdir -p "$SEMAMBA_DIR/models"
+cp "$ROOT_DIR/overlays/SEMamba/models/discriminator.py" \
+  "$SEMAMBA_DIR/models/discriminator.py"
 cp "$ROOT_DIR/overlays/SEMamba/utils/util.py" \
   "$SEMAMBA_DIR/utils/util.py"
 

@@ -49,7 +49,7 @@ ${ACTIVATE_TOOL} activate "${ENV_NAME}"
 
 python -m pip install --upgrade pip
 python -m pip install torch==2.2.2 torchaudio==2.2.2 --index-url "${TORCH_INDEX_URL}"
-python -m pip install numpy==1.26.4 packaging librosa soundfile pyyaml argparse tensorboard pesq einops huggingface_hub resampy wandb
+python -m pip install numpy==1.26.4 packaging pandas librosa soundfile pyyaml argparse tensorboard pesq einops huggingface_hub resampy wandb
 
 pushd "${SEMAMBA_DIR}/mamba_install" >/dev/null
 if ! python -m pip install --no-build-isolation .; then

@@ -1,5 +1,6 @@
 import warnings
 warnings.simplefilter(action='ignore', category=FutureWarning)
+from collections import defaultdict, deque
 import os
 import time
 import argparse
@@ -12,17 +13,20 @@ from torch.utils.tensorboard import SummaryWriter
 from torch.utils.data import DistributedSampler, DataLoader
 import torch.multiprocessing as mp
 from torch.nn.parallel import DistributedDataParallel
+from joblib import Parallel, delayed
+from pesq import pesq
 
 from dataloaders.dataloader_vctk import VCTKDemandDataset
 from dataloaders.dataloader_use_simulation import USESimulationPairDataset
 from models.stfts import mag_phase_stft, mag_phase_istft
 from models.generator import SEMamba
-from models.loss import pesq_score, phase_losses
+from models.loss import phase_losses
 from models.discriminator import MetricDiscriminator, batch_pesq
 from utils.util import (
     load_ckpts, load_optimizer_states, save_checkpoint,
     build_env, load_config, initialize_seed,
     print_gpu_info, log_model_info, initialize_process_group,
+    prune_step_checkpoints, save_best_step_checkpoints,
 )
 
 try:
@@ -72,6 +76,7 @@ def create_dataset(cfg, train=True, split=True, device='cuda:0'):
             pcs=cfg['training_cfg']['use_PCS400'] if train else False,
             seed=cfg['env_setting']['seed'],
             mode='train' if train else 'validation',
+            return_metadata=not train,
         )
 
     clean_json = cfg['data_cfg']['train_clean_json'] if train else cfg['data_cfg']['valid_clean_json']
@@ -115,6 +120,100 @@ def create_dataloader(dataset, cfg, train=True):
         pin_memory=True,
         drop_last=True if train else False
     )
+
+
+class WindowAverager:
+    def __init__(self, window):
+        self.window = int(window)
+        self.values = defaultdict(lambda: deque(maxlen=self.window))
+
+    def update(self, metrics):
+        for key, value in metrics.items():
+            self.values[key].append(float(value))
+
+    def averages(self):
+        return {
+            key: sum(values) / len(values)
+            for key, values in self.values.items()
+            if values
+        }
+
+
+def metadata_value(metadata, key, index):
+    if not metadata:
+        return ""
+    if isinstance(metadata, dict):
+        value = metadata.get(key, "")
+    elif isinstance(metadata, (list, tuple)) and index < len(metadata) and isinstance(metadata[index], dict):
+        value = metadata[index].get(key, "")
+    else:
+        return ""
+    if isinstance(value, (list, tuple)):
+        if len(value) == 1:
+            return value[0]
+        return value[index] if index < len(value) else ""
+    if torch.is_tensor(value):
+        return value[index].item() if value.ndim > 0 else value.item()
+    return value
+
+
+def pesq_score_with_details(utts_r, utts_g, cfg, metadata=None):
+    sampling_rate = cfg['stft_cfg']['sampling_rate']
+    num_workers = max(1, min(int(cfg['env_setting'].get('num_workers', 1)), len(utts_r)))
+
+    def eval_pesq(index, clean_utt, esti_utt):
+        clean_np = clean_utt.squeeze().cpu().numpy()
+        esti_np = esti_utt.squeeze().cpu().numpy()
+        try:
+            score = float(pesq(sampling_rate, clean_np, esti_np, 'wb'))
+        except Exception as exc:
+            return index, None, str(exc)
+        if score < 0:
+            return index, None, "negative PESQ score"
+        return index, score, ""
+
+    results = Parallel(n_jobs=num_workers)(
+        delayed(eval_pesq)(i, utts_r[i], utts_g[i]) for i in range(len(utts_r))
+    )
+
+    valid_scores = []
+    invalid = []
+    for index, score, error in results:
+        if score is None:
+            invalid.append({
+                "index": int(index),
+                "id": str(metadata_value(metadata, "id", index)),
+                "clean_path": str(metadata_value(metadata, "clean_path", index)),
+                "noisy_path": str(metadata_value(metadata, "noisy_path", index)),
+                "error": error,
+            })
+        else:
+            valid_scores.append(score)
+
+    mean_score = sum(valid_scores) / len(valid_scores) if valid_scores else float("nan")
+    return mean_score, len(valid_scores), invalid
+
+
+def log_invalid_pesq_samples(exp_path, step, invalid, limit):
+    if not invalid:
+        return
+    log_path = os.path.join(exp_path, "pesq_invalid_samples.jsonl")
+    with open(log_path, "a") as handle:
+        for item in invalid:
+            record = {"step": int(step), **item}
+            handle.write(json.dumps(record) + "\n")
+    for item in invalid[:limit]:
+        print(
+            "Invalid PESQ sample at step {step}: id={id}, clean={clean}, noisy={noisy}, error={error}".format(
+                step=step,
+                id=item.get("id", ""),
+                clean=item.get("clean_path", ""),
+                noisy=item.get("noisy_path", ""),
+                error=item.get("error", ""),
+            )
+        )
+    if len(invalid) > limit:
+        print(f"Invalid PESQ samples at step {step}: {len(invalid) - limit} more written to {log_path}")
 
 
 def train(rank, args, cfg):
@@ -167,16 +266,21 @@ def train(rank, args, cfg):
         if wandb_cfg.get('use_wandb', False):
             if wandb is None:
                 raise RuntimeError("wandb_cfg.use_wandb=true but wandb is not installed.")
-            wandb_run = wandb.init(
-                project=wandb_cfg.get('project', 'reuse'),
-                entity=wandb_cfg.get('entity'),
-                name=wandb_cfg.get('run_name', args.exp_name),
-                mode=wandb_cfg.get('mode', 'online'),
-                tags=wandb_cfg.get('tags', []),
-                config=cfg,
-            )
+            wandb_init_kwargs = {
+                "project": wandb_cfg.get('project', 'reuse'),
+                "entity": wandb_cfg.get('entity'),
+                "name": wandb_cfg.get('run_name', args.exp_name),
+                "mode": wandb_cfg.get('mode', 'online'),
+                "tags": wandb_cfg.get('tags', []),
+                "config": cfg,
+            }
+            if wandb_cfg.get('run_id'):
+                wandb_init_kwargs["id"] = wandb_cfg['run_id']
+                wandb_init_kwargs["resume"] = wandb_cfg.get('resume', 'allow')
+            wandb_run = wandb.init(**wandb_init_kwargs)
             wandb.define_metric("steps")
             wandb.define_metric("Training/*", step_metric="steps")
+            wandb.define_metric(f"TrainingAvg{cfg['env_setting'].get('summary_avg_window', 100)}/*", step_metric="steps")
             wandb.define_metric("Validation/*", step_metric="steps")
     else:
         wandb_run = None
@@ -185,6 +289,7 @@ def train(rank, args, cfg):
     discriminator.train()
 
     best_pesq, best_pesq_step = 0.0, 0
+    train_averager = WindowAverager(cfg['env_setting'].get('summary_avg_window', 100))
     for epoch in range(max(0, last_epoch), cfg['training_cfg']['training_epochs']):
         if rank == 0:
             start = time.time()
@@ -206,7 +311,7 @@ def train(rank, args, cfg):
 
             audio_g = mag_phase_istft(mag_g, pha_g, n_fft, hop_size, win_size, compress_factor)
             audio_list_r, audio_list_g = list(clean_audio.cpu().numpy()), list(audio_g.detach().cpu().numpy())
-            batch_pesq_score = batch_pesq(audio_list_r, audio_list_g, cfg)
+            batch_pesq_score, batch_pesq_mask = batch_pesq(audio_list_r, audio_list_g, cfg)
 
             # Discriminator
             # ------------------------------------------------------- #
@@ -214,11 +319,14 @@ def train(rank, args, cfg):
             metric_r = discriminator(clean_mag, clean_mag)
             metric_g = discriminator(clean_mag, mag_g.detach())
             loss_disc_r = F.mse_loss(one_labels, metric_r.flatten())
+            metric_pesq_mask = batch_pesq_mask.to(device) if batch_pesq_mask is not None else None
+            metric_pesq_valid_count = int(metric_pesq_mask.sum().item()) if metric_pesq_mask is not None else 0
+            metric_pesq_invalid_count = clean_audio.size(0) - metric_pesq_valid_count
 
             if batch_pesq_score is not None:
-                loss_disc_g = F.mse_loss(batch_pesq_score.to(device), metric_g.flatten())
+                loss_disc_g = F.mse_loss(batch_pesq_score.to(device), metric_g.flatten()[metric_pesq_mask])
             else:
-                loss_disc_g = 0
+                loss_disc_g = metric_g.sum() * 0.0
 
             loss_disc_all = loss_disc_r + loss_disc_g
 
@@ -242,7 +350,10 @@ def train(rank, args, cfg):
             loss_time = F.l1_loss(clean_audio, audio_g)
             # Metric Loss
             metric_g = discriminator(clean_mag, mag_g)
-            loss_metric = F.mse_loss(metric_g.flatten(), one_labels)
+            if metric_pesq_mask is not None and torch.any(metric_pesq_mask):
+                loss_metric = F.mse_loss(metric_g.flatten()[metric_pesq_mask], one_labels[metric_pesq_mask])
+            else:
+                loss_metric = metric_g.sum() * 0.0
             # Consistancy Loss
             _, _, rec_com = mag_phase_stft(audio_g, n_fft, hop_size, win_size, compress_factor, addeps=True)
             loss_con = F.mse_loss(com_g, rec_com) * 2
@@ -261,67 +372,77 @@ def train(rank, args, cfg):
             # ------------------------------------------------------- #
 
             if rank == 0:
+                with torch.no_grad():
+                    train_metrics = {
+                        "Generator Loss": loss_gen_all.item(),
+                        "Discriminator Loss": loss_disc_all.item(),
+                        "Metric Loss": loss_metric.item(),
+                        "Magnitude Loss": loss_mag.item(),
+                        "Phase Loss": loss_pha.item(),
+                        "Complex Loss": F.mse_loss(clean_com, com_g).item(),
+                        "Time Loss": loss_time.item(),
+                        "Consistancy Loss": F.mse_loss(com_g, rec_com).item(),
+                        "Metric PESQ Valid Count": metric_pesq_valid_count,
+                        "Metric PESQ Invalid Count": metric_pesq_invalid_count,
+                    }
+                train_averager.update({
+                    name: value
+                    for name, value in train_metrics.items()
+                    if not name.endswith(" Count")
+                })
+
                 # STDOUT logging
                 if steps % cfg['env_setting']['stdout_interval'] == 0:
-                    with torch.no_grad():
-                        metric_error = F.mse_loss(metric_g.flatten(), one_labels).item()
-                        mag_error = F.mse_loss(clean_mag, mag_g).item()
-                        ip_error, gd_error, iaf_error = phase_losses(clean_pha, pha_g, cfg)
-                        pha_error = (loss_ip + loss_gd + loss_iaf).item()
-                        com_error = F.mse_loss(clean_com, com_g).item()
-                        time_error = F.l1_loss(clean_audio, audio_g).item()
-                        con_error = F.mse_loss( com_g, rec_com ).item()
-
-                        print(
-                            'Steps : {:d}, Gen Loss: {:4.3f}, Disc Loss: {:4.3f}, Metric Loss: {:4.3f}, '
-                            'Mag Loss: {:4.3f}, Pha Loss: {:4.3f}, Com Loss: {:4.3f}, Time Loss: {:4.3f}, Cons Loss: {:4.3f}, s/b : {:4.3f}'.format(
-                                steps, loss_gen_all, loss_disc_all, metric_error, mag_error, pha_error, com_error, time_error, con_error, time.time() - start_b
-                            )
+                    print(
+                        'Steps : {:d}, Gen Loss: {:4.3f}, Disc Loss: {:4.3f}, Metric Loss: {:4.3f}, '
+                        'Mag Loss: {:4.3f}, Pha Loss: {:4.3f}, Com Loss: {:4.3f}, Time Loss: {:4.3f}, Cons Loss: {:4.3f}, s/b : {:4.3f}'.format(
+                            steps,
+                            train_metrics["Generator Loss"],
+                            train_metrics["Discriminator Loss"],
+                            train_metrics["Metric Loss"],
+                            train_metrics["Magnitude Loss"],
+                            train_metrics["Phase Loss"],
+                            train_metrics["Complex Loss"],
+                            train_metrics["Time Loss"],
+                            train_metrics["Consistancy Loss"],
+                            time.time() - start_b,
                         )
+                    )
 
                 # Checkpointing
                 if steps % cfg['env_setting']['checkpoint_interval'] == 0 and steps != 0:
+                    generator_state = {
+                        'generator': (generator.module if num_gpus > 1 else generator).state_dict()
+                    }
+                    optimizer_state = {
+                        'discriminator': (discriminator.module if num_gpus > 1 else discriminator).state_dict(),
+                        'optim_g': optim_g.state_dict(),
+                        'optim_d': optim_d.state_dict(),
+                        'steps': steps,
+                        'epoch': epoch
+                    }
                     exp_name = f"{args.exp_path}/g_{steps:08d}.pth"
-                    save_checkpoint(
-                        exp_name,
-                        {
-                            'generator': (generator.module if num_gpus > 1 else generator).state_dict()
-                        }
-                    )
+                    save_checkpoint(exp_name, generator_state)
                     exp_name = f"{args.exp_path}/do_{steps:08d}.pth"
-                    save_checkpoint(
-                        exp_name,
-                        {
-                            'discriminator': (discriminator.module if num_gpus > 1 else discriminator).state_dict(),
-                            'optim_g': optim_g.state_dict(),
-                            'optim_d': optim_d.state_dict(),
-                            'steps': steps,
-                            'epoch': epoch
-                        }
+                    save_checkpoint(exp_name, optimizer_state)
+                    prune_step_checkpoints(
+                        args.exp_path,
+                        keep=cfg['env_setting'].get('checkpoint_keep', 3),
+                        prefixes=("g_", "do_"),
                     )
 
                 # Tensorboard summary logging
                 if steps % cfg['env_setting']['summary_interval'] == 0:
-                    sw.add_scalar("Training/Generator Loss", loss_gen_all, steps)
-                    sw.add_scalar("Training/Discriminator Loss", loss_disc_all, steps)
-                    sw.add_scalar("Training/Metric Loss", metric_error, steps)
-                    sw.add_scalar("Training/Magnitude Loss", mag_error, steps)
-                    sw.add_scalar("Training/Phase Loss", pha_error, steps)
-                    sw.add_scalar("Training/Complex Loss", com_error, steps)
-                    sw.add_scalar("Training/Time Loss", time_error, steps)
-                    sw.add_scalar("Training/Consistancy Loss", con_error, steps)
+                    for name, value in train_metrics.items():
+                        sw.add_scalar(f"Training/{name}", value, steps)
+                    avg_metrics = train_averager.averages()
+                    for name, value in avg_metrics.items():
+                        sw.add_scalar(f"TrainingAvg{train_averager.window}/{name}", value, steps)
                     if wandb_run is not None:
-                        wandb.log({
-                            "steps": steps,
-                            "Training/Generator Loss": loss_gen_all.item(),
-                            "Training/Discriminator Loss": loss_disc_all.item(),
-                            "Training/Metric Loss": metric_error,
-                            "Training/Magnitude Loss": mag_error,
-                            "Training/Phase Loss": pha_error,
-                            "Training/Complex Loss": com_error,
-                            "Training/Time Loss": time_error,
-                            "Training/Consistancy Loss": con_error,
-                        })
+                        log_metrics = {"steps": steps}
+                        log_metrics.update({f"Training/{name}": value for name, value in train_metrics.items()})
+                        log_metrics.update({f"TrainingAvg{train_averager.window}/{name}": value for name, value in avg_metrics.items()})
+                        wandb.log(log_metrics)
 
                 # If NaN happend in training period, RaiseError
                 if torch.isnan(loss_gen_all).any():
@@ -336,8 +457,13 @@ def train(rank, args, cfg):
                     val_pha_err_tot = 0
                     val_com_err_tot = 0
                     with torch.no_grad():
+                        metadata_items = []
                         for j, batch in enumerate(validation_loader):
-                            clean_audio, clean_mag, clean_pha, clean_com, noisy_mag, noisy_pha = batch # [B, 1, F, T], F = nfft // 2+ 1, T = nframes
+                            metadata = None
+                            if len(batch) == 7:
+                                clean_audio, clean_mag, clean_pha, clean_com, noisy_mag, noisy_pha, metadata = batch
+                            else:
+                                clean_audio, clean_mag, clean_pha, clean_com, noisy_mag, noisy_pha = batch # [B, 1, F, T], F = nfft // 2+ 1, T = nframes
                             clean_audio = torch.autograd.Variable(clean_audio.to(device, non_blocking=True))
                             clean_mag = torch.autograd.Variable(clean_mag.to(device, non_blocking=True))
                             clean_pha = torch.autograd.Variable(clean_pha.to(device, non_blocking=True))
@@ -348,6 +474,8 @@ def train(rank, args, cfg):
                             audio_g = mag_phase_istft(mag_g, pha_g, n_fft, hop_size, win_size, compress_factor)
                             audios_r += torch.split(clean_audio, 1, dim=0) # [1, T] * B
                             audios_g += torch.split(audio_g, 1, dim=0)
+                            if metadata is not None:
+                                metadata_items.append(metadata)
 
                             val_mag_err_tot += F.mse_loss(clean_mag, mag_g).item()
                             val_ip_err, val_gd_err, val_iaf_err = phase_losses(clean_pha, pha_g, cfg)
@@ -357,7 +485,15 @@ def train(rank, args, cfg):
                         val_mag_err = val_mag_err_tot / (j+1)
                         val_pha_err = val_pha_err_tot / (j+1)
                         val_com_err = val_com_err_tot / (j+1)
-                        val_pesq_score = pesq_score(audios_r, audios_g, cfg).item()
+                        val_pesq_score, val_pesq_valid, val_pesq_invalid = pesq_score_with_details(
+                            audios_r, audios_g, cfg, metadata_items
+                        )
+                        log_invalid_pesq_samples(
+                            args.exp_path,
+                            steps,
+                            val_pesq_invalid,
+                            cfg['env_setting'].get('pesq_invalid_log_limit', 5),
+                        )
                         print('Steps : {:d}, PESQ Score: {:4.3f}, s/b : {:4.3f}'.
                                 format(steps, val_pesq_score, time.time() - start_b))
                         sw.add_scalar("Validation/PESQ Score", val_pesq_score, steps)
@@ -379,6 +515,21 @@ def train(rank, args, cfg):
                     if val_pesq_score >= best_pesq:
                         best_pesq = val_pesq_score
                         best_pesq_step = steps
+                        save_best_step_checkpoints(
+                            args.exp_path,
+                            steps,
+                            {
+                                'generator': (generator.module if num_gpus > 1 else generator).state_dict()
+                            },
+                            {
+                                'discriminator': (discriminator.module if num_gpus > 1 else discriminator).state_dict(),
+                                'optim_g': optim_g.state_dict(),
+                                'optim_d': optim_d.state_dict(),
+                                'steps': steps,
+                                'epoch': epoch,
+                                'best_pesq': best_pesq,
+                            },
+                        )
                     print(f"valid: PESQ {val_pesq_score}, Mag_loss {val_mag_err}, Phase_loss {val_pha_err}. Best_PESQ: {best_pesq} at step {best_pesq_step}")
 
             steps += 1

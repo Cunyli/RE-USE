@@ -32,6 +32,7 @@ class USESimulationPairDataset(torch.utils.data.Dataset):
         pcs=False,
         seed=1234,
         mode="train",
+        return_metadata=False,
     ):
         _add_use_simulation_to_path(use_simulation_root)
         from use_simulation_datasets import FixedPairDataset
@@ -45,6 +46,7 @@ class USESimulationPairDataset(torch.utils.data.Dataset):
         self.split = bool(split)
         self.random_start = bool(random_start)
         self.pcs = bool(pcs)
+        self.return_metadata = bool(return_metadata)
         self.dataset = FixedPairDataset(
             pair_manifest=pair_manifest,
             wav_len=None,
@@ -57,7 +59,7 @@ class USESimulationPairDataset(torch.utils.data.Dataset):
         )
 
     def __getitem__(self, index):
-        noisy_audio, clean_audio, _ = self.dataset[index]
+        noisy_audio, clean_audio, metadata = self.dataset[index]
         noisy_audio = torch.as_tensor(noisy_audio, dtype=torch.float32).reshape(1, -1)
         clean_audio = torch.as_tensor(clean_audio, dtype=torch.float32).reshape(1, -1)
 
@@ -77,7 +79,7 @@ class USESimulationPairDataset(torch.utils.data.Dataset):
             noisy_audio, self.n_fft, self.hop_size, self.win_size, self.compress_factor
         )
 
-        return (
+        item = (
             clean_audio.squeeze(),
             clean_mag.squeeze(),
             clean_pha.squeeze(),
@@ -85,6 +87,9 @@ class USESimulationPairDataset(torch.utils.data.Dataset):
             noisy_mag.squeeze(),
             noisy_pha.squeeze(),
         )
+        if self.return_metadata:
+            return item + (metadata,)
+        return item
 
     def __len__(self):
         return len(self.dataset)

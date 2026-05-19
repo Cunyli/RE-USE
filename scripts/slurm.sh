@@ -71,6 +71,15 @@ import torch
 ckpt_dir = Path(sys.argv[1])
 best_step = None
 
+for path in sorted(ckpt_dir.glob("best_g_*.pth"), reverse=True):
+    try:
+        torch.load(path, map_location="cpu")
+    except Exception as exc:
+        print(f"Skipping unreadable best checkpoint {path}: {exc}", file=sys.stderr)
+        continue
+    print(path)
+    raise SystemExit(0)
+
 try:
     from tensorboard.backend.event_processing.event_accumulator import EventAccumulator
 

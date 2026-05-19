@@ -4,6 +4,7 @@ import os
 import shutil
 import glob
 import re
+from pathlib import Path
 from torch.distributed import init_process_group
 
 
@@ -92,6 +93,37 @@ def save_checkpoint(filepath, obj):
     print("Saving checkpoint to {}".format(filepath))
     torch.save(obj, filepath)
     print("Complete.")
+
+
+def prune_step_checkpoints(cp_dir, keep=3, prefixes=("g_", "do_")):
+    cp_dir = Path(cp_dir)
+    steps = []
+    for path in cp_dir.glob(f"{prefixes[0]}*.pth"):
+        try:
+            steps.append(int(path.stem.replace(prefixes[0], "")))
+        except ValueError:
+            continue
+
+    for step in sorted(steps)[:-keep]:
+        for prefix in prefixes:
+            checkpoint = cp_dir / f"{prefix}{step:08d}.pth"
+            if checkpoint.exists():
+                try:
+                    checkpoint.unlink()
+                    print(f"Deleted checkpoint: {checkpoint}")
+                except OSError as exc:
+                    print(f"Failed to delete checkpoint {checkpoint}: {exc}")
+
+
+def save_best_step_checkpoints(cp_dir, step, generator_state, optimizer_state, generator_prefix="g_", optimizer_prefix="do_"):
+    cp_dir = Path(cp_dir)
+    save_checkpoint(str(cp_dir / f"best_{generator_prefix}{step:08d}.pth"), generator_state)
+    save_checkpoint(str(cp_dir / f"best_{optimizer_prefix}{step:08d}.pth"), optimizer_state)
+
+    for pattern in (f"best_{generator_prefix}*.pth", f"best_{optimizer_prefix}*.pth"):
+        for checkpoint in cp_dir.glob(pattern):
+            if f"{step:08d}" not in checkpoint.name:
+                checkpoint.unlink()
 
 
 def scan_checkpoint(cp_dir, prefix):

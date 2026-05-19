@@ -1,4 +1,5 @@
 # TAU fixed USE_simulation pair training config for RE-USE/SEMamba.
+# Uses canonical RIR-normalized phone_room data and masked PESQ metric loss.
 
 env_setting:
   num_gpus: 1
@@ -27,10 +28,10 @@ wandb_cfg:
   project: reuse
   entity: null
   mode: online
-  run_name: reuse_tau_fixed
+  run_name: reuse_tau_fixed_pesqmask_v1
   run_id: null
   resume: allow
-  tags: ["tau", "use_simulation", "fixed"]
+  tags: ["tau", "use_simulation", "fixed", "rirnorm", "pesqmask_v1"]
 
 training_cfg:
   training_epochs: 120
