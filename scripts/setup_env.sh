@@ -2,9 +2,9 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-SEMAMBA_DIR="${SEMAMBA_DIR:-${ROOT_DIR}/SEMamba}"
-UPSTREAM_DIR="${UPSTREAM_DIR:-${ROOT_DIR}/RE-USE}"
-ENV_NAME="${ENV_NAME:-reuse-triton}"
+SEMAMBA_DIR="${SEMAMBA_DIR:-${ROOT_DIR}/upstream/SEMamba}"
+REUSE_PRETRAINED_DIR="${REUSE_PRETRAINED_DIR:-${ROOT_DIR}/pretrained/reuse_hf}"
+ENV_NAME="${ENV_NAME:-reuse}"
 PYTHON_VERSION="${PYTHON_VERSION:-3.10}"
 TORCH_INDEX_URL="${TORCH_INDEX_URL:-https://download.pytorch.org/whl/cu121}"
 
@@ -49,7 +49,7 @@ ${ACTIVATE_TOOL} activate "${ENV_NAME}"
 
 python -m pip install --upgrade pip
 python -m pip install torch==2.2.2 torchaudio==2.2.2 --index-url "${TORCH_INDEX_URL}"
-python -m pip install numpy==1.26.4 packaging pandas librosa soundfile pyyaml argparse tensorboard pesq einops huggingface_hub resampy wandb
+python -m pip install numpy==1.26.4 packaging pandas librosa soundfile pyyaml tensorboard pesq joblib einops huggingface_hub resampy wandb
 
 pushd "${SEMAMBA_DIR}/mamba_install" >/dev/null
 if ! python -m pip install --no-build-isolation .; then
@@ -60,10 +60,10 @@ if ! python -m pip install --no-build-isolation .; then
 fi
 popd >/dev/null
 
-mkdir -p "$(dirname "${UPSTREAM_DIR}")" "${ROOT_DIR}/data/noisy_audio" "${ROOT_DIR}/data/enhanced_audio"
+mkdir -p "$(dirname "${REUSE_PRETRAINED_DIR}")"
 
-if [ ! -f "${UPSTREAM_DIR}/model.safetensors" ]; then
-  hf download nvidia/RE-USE --local-dir "${UPSTREAM_DIR}"
+if [ ! -f "${REUSE_PRETRAINED_DIR}/model.safetensors" ]; then
+  hf download nvidia/RE-USE --local-dir "${REUSE_PRETRAINED_DIR}"
 fi
 
 python - <<'PY'
@@ -75,4 +75,4 @@ print("cuda_available", torch.cuda.is_available())
 PY
 
 echo "Environment '${ENV_NAME}' is ready."
-echo "Upstream RE-USE snapshot: ${UPSTREAM_DIR}"
+echo "External RE-USE snapshot: ${REUSE_PRETRAINED_DIR}"

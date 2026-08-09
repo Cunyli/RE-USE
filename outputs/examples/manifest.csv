@@ -1,0 +1,5 @@
+sample_id,degraded_path,reference_path,enhanced_path,checkpoint_origin,checkpoint_id,provenance_status,notes
+sample_01,degraded/sample_01.wav,reference/sample_01.wav,enhanced/legacy_unverified/sample_01.flac,unknown,unknown,legacy_unverified,Found in the legacy data directory; generating checkpoint was not recorded
+sample_02,degraded/sample_02.wav,reference/sample_02.wav,enhanced/legacy_unverified/sample_02.flac,unknown,unknown,legacy_unverified,Found in the legacy data directory; generating checkpoint was not recorded
+sample_03,degraded/sample_03.flac,reference/sample_03.flac,enhanced/legacy_unverified/sample_03.flac,unknown,unknown,legacy_unverified,Found in the legacy data directory; generating checkpoint was not recorded
+sample_04,degraded/sample_04.flac,reference/sample_04.flac,enhanced/legacy_unverified/sample_04.flac,unknown,unknown,legacy_unverified,Found in the legacy data directory; generating checkpoint was not recorded

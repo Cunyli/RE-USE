@@ -3,7 +3,9 @@ set -euo pipefail
 
 ROOT_DIR="${ROOT_DIR:-/scratch/work/lil14/RE-USE}"
 TASK="${TASK:-${1:-infer}}"
-SEMAMBA_DIR="${SEMAMBA_DIR:-$ROOT_DIR/SEMamba}"
+SEMAMBA_DIR="${SEMAMBA_DIR:-$ROOT_DIR/upstream/SEMamba}"
+CHECKPOINT_ROOT="${CHECKPOINT_ROOT:-$ROOT_DIR/checkpoints}"
+DEFAULT_EXP_NAME="${DEFAULT_EXP_NAME:-reuse_tau_fixed_fresh_0to120_v2}"
 CONDA_ENV_NAME="${CONDA_ENV_NAME:-reuse}"
 LOG_DIR="${LOG_DIR:-$ROOT_DIR/logs}"
 JOB_NAME="${JOB_NAME:-reuse-$TASK}"
@@ -16,7 +18,7 @@ TIME_LIMIT="${TIME_LIMIT:-01:00:00}"
 SOFTWARE_STACK_MODULE="${SOFTWARE_STACK_MODULE:-triton/2025.1-gcc}"
 COMPILER_MODULE="${COMPILER_MODULE:-gcc/13.3.0}"
 
-export ROOT_DIR TASK SEMAMBA_DIR CONDA_ENV_NAME LOG_DIR
+export ROOT_DIR TASK SEMAMBA_DIR CHECKPOINT_ROOT DEFAULT_EXP_NAME CONDA_ENV_NAME LOG_DIR
 
 mkdir -p "$LOG_DIR"
 
@@ -60,7 +62,7 @@ load_runtime() {
 }
 
 best_reuse_checkpoint() {
-  local ckpt_dir="${1:-$SEMAMBA_DIR/exp/reuse_tau_fixed}"
+  local ckpt_dir="${1:-$CHECKPOINT_ROOT/$DEFAULT_EXP_NAME}"
 
   python - "$ckpt_dir" <<'PY'
 import sys
@@ -96,8 +98,8 @@ PY
 
 run_train() {
   CONFIG_PATH="${CONFIG_PATH:-$ROOT_DIR/configs/train/semamba_tau_fixed.yaml}"
-  EXP_FOLDER="${EXP_FOLDER:-$SEMAMBA_DIR/exp}"
-  EXP_NAME="${EXP_NAME:-reuse_tau_fixed_fresh_0to120_v2}"
+  EXP_FOLDER="${EXP_FOLDER:-$CHECKPOINT_ROOT}"
+  EXP_NAME="${EXP_NAME:-$DEFAULT_EXP_NAME}"
   USE_SIMULATION_ROOT="${USE_SIMULATION_ROOT:-/scratch/work/lil14/USE_simulation}"
   REUSE_TAU_FIXED_TRAIN_CSV="${REUSE_TAU_FIXED_TRAIN_CSV:-/scratch/work/lil14/data/TAU/simulated/phone_room/train/paired.csv}"
   REUSE_TAU_FIXED_VALID_CSV="${REUSE_TAU_FIXED_VALID_CSV:-/scratch/work/lil14/data/TAU/simulated/phone_room/valid/paired.csv}"
@@ -133,10 +135,10 @@ run_infer() {
   fi
 
   if [[ -z "$CKPT" ]]; then
-    CKPT="$(best_reuse_checkpoint "$SEMAMBA_DIR/exp/reuse_tau_fixed")"
+    CKPT="$(best_reuse_checkpoint "$CHECKPOINT_ROOT/$DEFAULT_EXP_NAME")"
   fi
   if [[ -z "$CKPT" || ! -f "$CKPT" ]]; then
-    echo "No RE-USE/SEMamba checkpoint found. Set CKPT or finish training under $SEMAMBA_DIR/exp/reuse_tau_fixed" | tee -a "$LIVE_LOG"
+    echo "No RE-USE/SEMamba checkpoint found. Set CKPT or finish training under $CHECKPOINT_ROOT/$DEFAULT_EXP_NAME" | tee -a "$LIVE_LOG"
     exit 1
   fi
 

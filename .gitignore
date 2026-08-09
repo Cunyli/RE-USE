@@ -6,6 +6,8 @@ __pycache__/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
+.coverage
+htmlcov/
 
 # Local environments
 .env
@@ -26,21 +28,28 @@ env/
 AGENTS.md
 docs/
 
-# Upstream source snapshots and cloned repositories
+# Downloaded upstream source
+/upstream/
 /SEMamba/
 /RE-USE/
 /third_party/
-/upstream/
+
+# External and locally trained weights
+/pretrained/*
+!/pretrained/README.md
+/checkpoints/*
+!/checkpoints/README.md
 
 # Runtime artifacts
 /data/
 /logs/
-/outputs/
 /runs/
 /wandb/
 /tmp/
-/checkpoints/
 /exp/
+/outputs/*
+!/outputs/examples/
+!/outputs/examples/**
 
 # Model weights and generated checkpoints
 *.ckpt

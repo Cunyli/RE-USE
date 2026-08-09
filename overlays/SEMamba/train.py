@@ -2,6 +2,7 @@ import argparse
 from datetime import datetime
 import json
 import os
+from pathlib import Path
 import random
 import re
 import sys
@@ -436,8 +437,14 @@ def train(rank, args, cfg):
         discriminator = DistributedDataParallel(discriminator, device_ids=[rank]).to(device)
 
     if cfg['training_cfg'].get('use_pretrainedD', False):
-        discriminator.load_state_dict( torch.load('ckpts/pretrained_discriminator.pth') )
-        print("Loaded pretrained weight from ckpts/pretrained_discriminator.pth.")
+        pretrained_d_path = Path(
+            cfg['training_cfg'].get(
+                'pretrained_discriminator_path',
+                Path(__file__).resolve().parents[2] / 'pretrained/semamba/pretrained_discriminator.pth',
+            )
+        ).expanduser()
+        discriminator.load_state_dict(torch.load(pretrained_d_path, map_location=device))
+        print(f"Loaded pretrained discriminator from {pretrained_d_path}.")
 
     # Create optimizer and schedulers
     optimizers = setup_optimizers((generator, discriminator), cfg)

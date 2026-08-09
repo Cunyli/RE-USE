@@ -1,28 +1,22 @@
-# RE-USE Launcher
+# RE-USE
 
-This repository is a lightweight launcher for running RE-USE/SEMamba
-experiments on Triton. Upstream source checkouts, checkpoints, logs, W&B runs,
-caches, and audio data are local runtime artifacts and are ignored by git.
+RE-USE is a lightweight launcher for SEMamba-based speech-enhancement experiments in the local USE research workspace. The repository owns the experiment configs, USE Simulation adapter, SEMamba overlays, and launch scripts. Downloaded source snapshots and generated research artifacts stay outside Git.
 
-## Layout
+## At a glance
 
-- `scripts/fetch_sources.sh`: clone SEMamba into local `SEMamba/`.
-- `scripts/apply_semamba_overrides.sh`: apply the local USE_simulation adapter,
-  SEMamba file overlays, and config.
-- `scripts/setup_env.sh`: create the conda environment and install runtime
-  dependencies, then download the RE-USE Hugging Face snapshot into local
-  `RE-USE/`.
-- `scripts/slurm.sh`: generic Slurm entry point for `train` and `infer`.
-- `configs/train/`: launcher-owned training configs.
-- `overlays/`: files copied into the local SEMamba checkout.
+| Purpose | Location |
+| --- | --- |
+| Training configs | `configs/train/` |
+| Local SEMamba adaptations | `overlays/SEMamba/` |
+| Reusable launch/setup scripts | `scripts/` |
+| Downloaded upstream source | `upstream/SEMamba/` |
+| Downloaded external weights/assets | `pretrained/` |
+| Locally trained checkpoints | `checkpoints/<run_id>/` |
+| W&B and other run records | `runs/` |
+| Small fixed listening set | `outputs/examples/` |
+| Logs and temporary files | `logs/`, `tmp/` |
 
-Ignored local directories include `SEMamba/`, `RE-USE/`, `data/`, `logs/`,
-`outputs/`, `runs/`, `wandb/`, checkpoint directories, model weights, and
-source-tree caches.
-
-Repository conventions are kept in this README, `.gitignore`, `configs/`, and
-`scripts/`; local agent notes such as `AGENTS.md` or `docs/` are intentionally
-ignored.
+Generated artifacts are ignored by Git. Only the small listening set and the README files that explain artifact directories are tracked.
 
 ## Setup
 
@@ -32,12 +26,9 @@ bash scripts/apply_semamba_overrides.sh
 bash scripts/setup_env.sh
 ```
 
-Re-run `scripts/apply_semamba_overrides.sh` after refreshing the local SEMamba
-checkout.
+Re-run `scripts/apply_semamba_overrides.sh` after refreshing the SEMamba checkout.
 
-## Slurm
-
-Use generic task names and choose data through config/environment variables:
+## Training and inference
 
 ```bash
 bash scripts/slurm.sh train
@@ -47,30 +38,33 @@ bash scripts/slurm.sh infer
 Common overrides:
 
 ```bash
-CONFIG_PATH=configs/train/semamba_tau_fixed.yaml bash scripts/slurm.sh train
-OUTPUT_DIR=/path/to/enhanced CKPT=/path/to/g_00006000.pth bash scripts/slurm.sh infer
+CONFIG_PATH=configs/train/semamba_tau_fixed.yaml \
+EXP_NAME=my_run \
+bash scripts/slurm.sh train
+
+CKPT=checkpoints/my_run/g_00006000.pth \
+OUTPUT_DIR=/path/to/enhanced \
+bash scripts/slurm.sh infer
 ```
 
-TAU fixed defaults are kept in `scripts/slurm.sh` for the local Triton workflow.
-Portable config defaults use placeholder paths or environment variables.
+Data locations are selected through the config files or environment variables. Datasets are not stored in this repository.
 
-## USE Simulation
+## Checkpoint boundary
 
-The local SEMamba checkout should support fixed paired manifests exported by
-USE_simulation:
+- `pretrained/reuse_hf/` contains the downloaded NVIDIA RE-USE Hugging Face snapshot, including `model.safetensors` and its inference code.
+- `pretrained/semamba/` contains externally released SEMamba weights.
+- `checkpoints/<run_id>/` contains locally trained or resumed checkpoints.
 
-```yaml
-data_cfg:
-  dataset_type: use_simulation_fixed
-  use_simulation_root: ${USE_SIMULATION_ROOT:-../USE_simulation}
-  train_pair_manifest: ${REUSE_TAU_FIXED_TRAIN_CSV:-/path/to/train/paired.csv}
-  valid_pair_manifest: ${REUSE_TAU_FIXED_VALID_CSV:-/path/to/valid/paired.csv}
-```
+Do not mix these categories. See `pretrained/README.md` and `checkpoints/README.md` for the directory contract.
 
-Inference writes ABQI/ABQY-style outputs:
+## Listening samples
 
-```text
-<output_dir>/wav/
-<output_dir>/inf.scp
-<output_dir>/ref.scp
-```
+`outputs/examples/` is the only review-facing listening set. It contains four fixed degraded/reference/enhanced triplets and a manifest. The historical enhanced files did not record their generating checkpoint, so they are explicitly marked `legacy_unverified`.
+
+Large or repeated outputs remain with their experiment and are not part of the review-facing demo. No historical checkpoints, logs, W&B runs, or upstream demo samples were deleted during normalization.
+
+## Current limitations
+
+- This launcher depends on the external USE Simulation and AVQI evaluation workspaces on Triton.
+- The four inherited listening examples have complete audio triplets but incomplete checkpoint provenance.
+- The ignored `.local_git_backup/` directory is a preserved historical backup, not active source code.

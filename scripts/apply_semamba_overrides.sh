@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT_DIR="${ROOT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
-SEMAMBA_DIR="${SEMAMBA_DIR:-${ROOT_DIR}/SEMamba}"
+SEMAMBA_DIR="${SEMAMBA_DIR:-${ROOT_DIR}/upstream/SEMamba}"
 
 if [[ ! -d "$SEMAMBA_DIR" ]]; then
   echo "Missing SEMamba checkout at $SEMAMBA_DIR. Run scripts/fetch_sources.sh first."
