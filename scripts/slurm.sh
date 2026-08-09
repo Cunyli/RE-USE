@@ -69,40 +69,19 @@ from pathlib import Path
 import torch
 
 ckpt_dir = Path(sys.argv[1])
-best_step = None
 
-for path in sorted(ckpt_dir.glob("best_g_*.pth"), reverse=True):
-    try:
-        torch.load(path, map_location="cpu")
-    except Exception as exc:
-        print(f"Skipping unreadable best checkpoint {path}: {exc}", file=sys.stderr)
-        continue
-    print(path)
-    raise SystemExit(0)
-
-try:
-    from tensorboard.backend.event_processing.event_accumulator import EventAccumulator
-
-    values = []
-    for event in sorted((ckpt_dir / "logs").glob("events.out.tfevents.*")):
-        accumulator = EventAccumulator(str(event))
-        accumulator.Reload()
-        if "Validation/PESQ Score" in accumulator.Tags().get("scalars", []):
-            values.extend(accumulator.Scalars("Validation/PESQ Score"))
-    if values:
-        best_step = int(max(values, key=lambda item: item.value).step)
-except Exception as exc:
-    print(f"Could not read validation PESQ from TensorBoard logs: {exc}", file=sys.stderr)
-
-if best_step is not None:
-    candidate = ckpt_dir / f"g_{best_step:08d}.pth"
-    if candidate.is_file():
+for pattern, label in (
+    ("best_guarded_g_*.pth", "guarded-best"),
+    ("best_avqi_gap_g_*.pth", "AVQI-best"),
+):
+    for path in sorted(ckpt_dir.glob(pattern), reverse=True):
         try:
-            torch.load(candidate, map_location="cpu")
-            print(candidate)
-            raise SystemExit(0)
+            torch.load(path, map_location="cpu")
         except Exception as exc:
-            print(f"Skipping best-PESQ checkpoint {candidate}: {exc}", file=sys.stderr)
+            print(f"Skipping unreadable {label} checkpoint {path}: {exc}", file=sys.stderr)
+            continue
+        print(path)
+        raise SystemExit(0)
 
 for path in sorted(ckpt_dir.glob("g_*.pth"), reverse=True):
     try:
@@ -118,7 +97,7 @@ PY
 run_train() {
   CONFIG_PATH="${CONFIG_PATH:-$ROOT_DIR/configs/train/semamba_tau_fixed.yaml}"
   EXP_FOLDER="${EXP_FOLDER:-$SEMAMBA_DIR/exp}"
-  EXP_NAME="${EXP_NAME:-reuse_tau_fixed}"
+  EXP_NAME="${EXP_NAME:-reuse_tau_fixed_fresh_0to120_v2}"
   USE_SIMULATION_ROOT="${USE_SIMULATION_ROOT:-/scratch/work/lil14/USE_simulation}"
   REUSE_TAU_FIXED_TRAIN_CSV="${REUSE_TAU_FIXED_TRAIN_CSV:-/scratch/work/lil14/data/TAU/simulated/phone_room/train/paired.csv}"
   REUSE_TAU_FIXED_VALID_CSV="${REUSE_TAU_FIXED_VALID_CSV:-/scratch/work/lil14/data/TAU/simulated/phone_room/valid/paired.csv}"

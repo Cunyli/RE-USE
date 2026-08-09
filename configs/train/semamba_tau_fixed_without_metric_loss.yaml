@@ -1,10 +1,9 @@
 # TAU fixed USE_simulation pair training config for RE-USE/SEMamba.
-# Uses canonical RIR-normalized phone_room data and masked PESQ metric loss.
 
 repo_name: reuse
 model_name: semamba
-experiment: tau_fixed_pesqmask_v1
-wandb_change: tau_fixed_pesqmask_v1
+experiment: tau_fixed_without_metric_loss_v1
+wandb_change: without_metric_loss_v1
 
 env_setting:
   num_gpus: 1
@@ -39,18 +38,19 @@ wandb_cfg:
   group: null
   run_id: null
   resume: allow
-  tags: ["tau", "use_simulation", "fixed", "rirnorm", "pesqmask_v1"]
+  tags: ["tau", "use_simulation", "fixed", "without_metric_loss_v1"]
 
 training_cfg:
   training_epochs: 120
   batch_size: 4
+  use_metric_loss: false
   learning_rate: 0.0005
   adam_b1: 0.8
   adam_b2: 0.99
   lr_decay: 0.99
   segment_size: 32000
   loss:
-    metric: 0.05
+    metric: 0.0
     magnitude: 0.9
     phase: 0.3
     complex: 0.1

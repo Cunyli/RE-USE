@@ -106,7 +106,7 @@ class USESimulationPairDataset(torch.utils.data.Dataset):
             if self.random_start:
                 start = int(torch.randint(0, length - self.segment_size + 1, (1,)).item())
             else:
-                start = 0
+                start = self._active_start(clean_audio, length)
             return (
                 clean_audio[:, start : start + self.segment_size],
                 noisy_audio[:, start : start + self.segment_size],
@@ -116,3 +116,13 @@ class USESimulationPairDataset(torch.utils.data.Dataset):
         clean_audio = torch.nn.functional.pad(clean_audio, (0, pad), "constant")
         noisy_audio = torch.nn.functional.pad(noisy_audio, (0, pad), "constant")
         return clean_audio, noisy_audio
+
+    def _active_start(self, clean_audio, length):
+        max_start = length - self.segment_size
+        if max_start <= 0:
+            return 0
+        active = (clean_audio.squeeze(0).abs() > 0.01).float()
+        prefix = torch.nn.functional.pad(torch.cumsum(active, dim=0), (1, 0))
+        counts = prefix[self.segment_size:] - prefix[:-self.segment_size]
+        valid = torch.nonzero(counts >= self.segment_size * 0.05).flatten()
+        return int(valid[0].item()) if valid.numel() else 0

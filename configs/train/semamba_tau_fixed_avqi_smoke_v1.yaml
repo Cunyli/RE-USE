@@ -1,26 +1,24 @@
-# TAU fixed USE_simulation pair training config for RE-USE/SEMamba.
-# Uses canonical RIR-normalized phone_room data and masked PESQ metric loss.
+# Smoke test for RE-USE/SEMamba AVQI W&B logging.
+# This is only intended to verify val_avqi/* metrics wiring.
 
 repo_name: reuse
 model_name: semamba
-experiment: tau_fixed_pesqmask_v1
-wandb_change: tau_fixed_pesqmask_v1
+experiment: tau_fixed_avqi_smoke_v1
+wandb_change: avqi_smoke_v1
 
 env_setting:
   num_gpus: 1
-  num_workers: 8
+  num_workers: 0
   seed: 20260513
-  stdout_interval: 10
+  stdout_interval: 1
   checkpoint_interval_steps: 1000
-  checkpoint_keep: 3
-  validation_interval_steps: 300
-  wandb_log_interval_steps: 50
-  avqi_validation_interval_steps: 1000
-  valid_pesq_max_batches: 4
-  pesq_invalid_log_limit: 5
+  checkpoint_keep: 1
+  validation_interval_steps: 1000
+  wandb_log_interval_steps: 1
+  avqi_validation_interval_steps: 1
   dist_cfg:
     dist_backend: nccl
-    dist_url: tcp://localhost:19477
+    dist_url: tcp://localhost:19491
     world_size: 1
 
 data_cfg:
@@ -28,7 +26,6 @@ data_cfg:
   use_simulation_root: ${USE_SIMULATION_ROOT:-../USE_simulation}
   train_pair_manifest: ${REUSE_TAU_FIXED_TRAIN_CSV:-/path/to/tau/simulated/phone_room/train/paired.csv}
   valid_pair_manifest: ${REUSE_TAU_FIXED_VALID_CSV:-/path/to/tau/simulated/phone_room/valid/paired.csv}
-  pesq_invalid_manifest: ${REUSE_PESQ_INVALID_MANIFEST:-/scratch/work/lil14/data/TAU/simulated/phone_room/pesq_invalid_samples.jsonl}
 
 wandb_cfg:
   use_wandb: true
@@ -39,18 +36,20 @@ wandb_cfg:
   group: null
   run_id: null
   resume: allow
-  tags: ["tau", "use_simulation", "fixed", "rirnorm", "pesqmask_v1"]
+  tags: ["tau", "use_simulation", "fixed", "avqi_smoke_v1"]
 
 training_cfg:
-  training_epochs: 120
+  training_epochs: 1
   batch_size: 4
+  gradient_accumulation_steps: 1
+  use_metric_loss: false
   learning_rate: 0.0005
   adam_b1: 0.8
   adam_b2: 0.99
   lr_decay: 0.99
-  segment_size: 32000
+  segment_size: 8000
   loss:
-    metric: 0.05
+    metric: 0.0
     magnitude: 0.9
     phase: 0.3
     complex: 0.1

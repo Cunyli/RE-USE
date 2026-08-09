@@ -1,14 +1,21 @@
 # TAU fixed USE_simulation pair training config for RE-USE/SEMamba.
 
+repo_name: reuse
+model_name: semamba
+experiment: tau_fixed_fresh_0to120_v2
+wandb_change: fresh_0to120_v2
+
 env_setting:
   num_gpus: 1
   num_workers: 8
   seed: 20260513
   stdout_interval: 10
-  checkpoint_interval: 1000
+  checkpoint_interval_steps: 1000
   checkpoint_keep: 3
-  validation_interval: 200
-  summary_interval: 100
+  validation_interval_steps: 300
+  wandb_log_interval_steps: 50
+  avqi_validation_interval_steps: 1000
+  valid_pesq_max_batches: 4
   pesq_invalid_log_limit: 5
   dist_cfg:
     dist_backend: nccl
@@ -20,20 +27,23 @@ data_cfg:
   use_simulation_root: ${USE_SIMULATION_ROOT:-../USE_simulation}
   train_pair_manifest: ${REUSE_TAU_FIXED_TRAIN_CSV:-/path/to/tau/simulated/phone_room/train/paired.csv}
   valid_pair_manifest: ${REUSE_TAU_FIXED_VALID_CSV:-/path/to/tau/simulated/phone_room/valid/paired.csv}
+  pesq_invalid_manifest: ${REUSE_PESQ_INVALID_MANIFEST:-/scratch/work/lil14/data/TAU/simulated/phone_room/pesq_invalid_samples.jsonl}
 
 wandb_cfg:
   use_wandb: true
   project: reuse
   entity: null
   mode: online
-  run_name: reuse_tau_fixed
+  run_name: null
+  group: null
   run_id: null
   resume: allow
-  tags: ["tau", "use_simulation", "fixed"]
+  tags: ["tau", "use_simulation", "fixed", "fresh_0to120_v2"]
 
 training_cfg:
   training_epochs: 120
   batch_size: 4
+  use_metric_loss: true
   learning_rate: 0.0005
   adam_b1: 0.8
   adam_b2: 0.99
